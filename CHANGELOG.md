@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 — 2026-11-15
+
+- Add Recommended category sorting to Amasty Shopby's independent fulltext collection, which does not inherit Magento's native fulltext collection.
+- Preserve manual sorts and leave search results, disabled stores and ordinary SQL product collections unaffected for both collection implementations.
+- Cover Amasty's independent collection inheritance without requiring or redistributing its commercial module in public CI.
+
 ## 1.0.1 — 2026-11-15
 
 - Correct the Admin enablement backend's optional resource dependency to `Magento\Framework\Model\ResourceModel\AbstractResource`, fixing `setup:di:compile` and interceptor generation.

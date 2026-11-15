@@ -17,7 +17,9 @@ class CategoryToolbar
     public function beforeSetCollection(Toolbar $subject, $collection): array
     {
         if ($this->request->getFullActionName() === 'catalog_category_view'
-            && $collection instanceof Collection
+            // Shopby's search collection extends the base product collection, not Magento's fulltext class.
+            && ($collection instanceof Collection
+                || is_a($collection, 'Amasty\\Shopby\\Model\\ResourceModel\\Fulltext\\Collection'))
             && $this->config->isEnabled((int)$collection->getStoreId())
         ) {
             $subject->setAvailableOrders([Config::SORT_CODE => __('Recommended')] + $subject->getAvailableOrders());

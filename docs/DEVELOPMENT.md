@@ -59,6 +59,8 @@ Require `willwright/module-category-sorting:1.0.x-dev`, then follow the README's
 
 No templates are overridden by this package. Recommended always uses its fixed ordering, including URLs containing `product_list_dir=asc`. If your theme displays a direction switcher, you may hide it while the current order equals `Willwright\CategorySorting\Model\Config::SORT_CODE` (`willwright_recommended`). Keep the theme's existing sorter markup and behaviour for every other sort choice. Themes must render Magento's toolbar available-orders list and use its fulltext category collection for this integration.
 
+Both Magento's native fulltext collection and `Amasty\Shopby\Model\ResourceModel\Fulltext\Collection` are recognised. Shopby's collection inherits the base product collection directly, so a native-fulltext-only type check skips it entirely. The optional class name check adds no Amasty dependency and still excludes ordinary SQL collections. Public CI uses a minimal authored fixture with the same independent inheritance when Amasty is absent; installations with Amasty exercise its actual collection class in the toolbar tests. This support targets Shopby's standard OpenSearch/Elasticsearch pipeline, not Adobe Live Search or a MySQL search adapter.
+
 ## Staging release check
 
 Compile DI, apply schema and perform the first full search reindex. Confirm Recommended is the initial choice on a category, check consecutive pages and filters, mixed-stock and preorder-only configurables, and ascending/descending manual price sorting. Check native price tiebreakers using different customer groups and websites. Confirm cron refreshes changed availability and category caches. These application/browser checks are separate from the isolated regression suite.

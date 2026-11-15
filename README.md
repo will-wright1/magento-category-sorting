@@ -19,7 +19,7 @@ Customers can still choose the existing price, name or position orders. Search r
 ## Requirements and supported scope
 
 - Magento Open Source 2.4.8 or later in the 2.4 series, PHP 8.3 or later within Magento's supported PHP versions.
-- Magento's standard OpenSearch/Elasticsearch category search adapter and fulltext collection. Third-party replacement search engines need separate integration testing.
+- Magento's standard OpenSearch/Elasticsearch category search adapter with either Magento's native fulltext collection or Amasty Shopby's fulltext collection. Other replacement search engines/collections need separate integration testing.
 - **Legacy CatalogInventory, with MSI disabled.** Multi Source Inventory, reservations and multiple inventory stocks are not supported by the bundled availability provider. Activation through Admin or `config:set` is rejected when MSI is active, with an explanation beside the Admin setting. Runtime checks also keep Recommended sorting inactive if an enabled value was imported or MSI was enabled later; Magento's normal category sorting remains available. An `AvailabilityProviderInterface` is available for a project-specific replacement; see [extension points](docs/DEVELOPMENT.md#extension-points).
 - Magento cron and the stock/search indexers must be running.
 
