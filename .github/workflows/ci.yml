@@ -65,3 +65,12 @@ jobs:
         if: matrix.php == '8.4'
         working-directory: module
         run: python3 tests/run-integration.py
+      - name: Compile Magento dependency injection with the packaged module
+        if: matrix.php == '8.4'
+        working-directory: magento-fixture
+        run: |
+          module_path="$MAGENTO_ROOT/app/code/Willwright/CategorySorting"
+          mkdir -p "$module_path"
+          git -C "$GITHUB_WORKSPACE/module" archive HEAD | tar -x -C "$module_path"
+          php -r '$modules=[]; foreach (glob("app/code/*/*/etc/module.xml") as $file) { $xml=simplexml_load_file($file); $modules[(string)$xml->module["name"]]=1; } ksort($modules); file_put_contents("app/etc/config.php", "<?php\nreturn ".var_export(["modules"=>$modules,"scopes"=>[],"system"=>[]],true).";\n");'
+          php -d memory_limit=2G bin/magento setup:di:compile

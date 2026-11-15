@@ -4,6 +4,7 @@
 
 - Correct the Admin enablement backend's optional resource dependency to `Magento\Framework\Model\ResourceModel\AbstractResource`, fixing `setup:di:compile` and interceptor generation.
 - Validate every runtime constructor with Magento's DI class reader and generate the Admin backend interceptor in regression tests, including optional resource dependencies.
+- Run full `setup:di:compile` against the packaged module in the clean Magento CI fixture before release.
 
 ## 1.0.0 — 2026-11-15
 
