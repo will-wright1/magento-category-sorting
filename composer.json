@@ -1,0 +1,64 @@
+{
+    "name": "willwright/module-category-sorting",
+    "description": "Magento 2 category sorting by stock availability, paid sales, review rating and customer-specific price.",
+    "type": "magento2-module",
+    "license": "MIT",
+    "keywords": [
+        "magento2",
+        "category",
+        "sorting",
+        "merchandising",
+        "opensearch"
+    ],
+    "homepage": "https://github.com/will-wright1/magento-category-sorting",
+    "support": {
+        "issues": "https://github.com/will-wright1/magento-category-sorting/issues",
+        "source": "https://github.com/will-wright1/magento-category-sorting"
+    },
+    "require": {
+        "php": "^8.3",
+        "ext-ctype": "*",
+        "magento/framework": "^103.0.8",
+        "magento/module-advanced-search": "^100.4.6",
+        "magento/module-catalog": "^104.0.8",
+        "magento/module-catalog-inventory": "^100.4.8",
+        "magento/module-catalog-search": "^102.0.8",
+        "magento/module-config": "^101.2.8",
+        "magento/module-configurable-product": "^100.4.8",
+        "magento/module-cron": "^100.4.8",
+        "magento/module-customer": "^103.0.8",
+        "magento/module-eav": "^102.1.8",
+        "magento/module-elasticsearch": "^101.0.8",
+        "magento/module-indexer": "^100.4.8",
+        "magento/module-review": "^100.4.8",
+        "magento/module-sales": "^103.0.8",
+        "magento/module-store": "^101.1.8"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Willwright\\CategorySorting\\": ""
+        },
+        "exclude-from-classmap": [
+            "/tests/"
+        ]
+    },
+    "archive": {
+        "exclude": [
+            "/.github",
+            "/tests",
+            "/phpunit.xml.dist",
+            "/.gitignore",
+            "/.gitattributes",
+            "/dist",
+            "/vendor",
+            "/auth.json",
+            "/.env",
+            "/.env.*",
+            "/.phpunit.cache",
+            "/.DS_Store"
+        ]
+    }
+}

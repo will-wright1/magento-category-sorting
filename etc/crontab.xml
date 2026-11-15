@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+    <group id="default">
+        <job name="willwright_category_sorting_nightly" instance="Willwright\CategorySorting\Cron\Refresh" method="nightly"><schedule>15 2 * * *</schedule></job>
+        <job name="willwright_category_sorting_availability" instance="Willwright\CategorySorting\Cron\Refresh" method="availability"><schedule>*/5 * * * *</schedule></job>
+    </group>
+</config>

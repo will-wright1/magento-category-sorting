@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <preference for="Willwright\CategorySorting\Api\AvailabilityProviderInterface" type="Willwright\CategorySorting\Model\ResourceModel\AvailabilitySource"/>
+    <virtualType name="elasticsearch5FieldProvider" type="Magento\Elasticsearch\Model\Adapter\FieldMapper\Product\CompositeFieldProvider">
+        <arguments><argument name="providers" xsi:type="array"><item name="willwright_category_sorting" xsi:type="object">Willwright\CategorySorting\Search\FieldMapping</item></argument></arguments>
+    </virtualType>
+    <virtualType name="additionalFieldsProviderForElasticsearch" type="Magento\AdvancedSearch\Model\Adapter\DataMapper\AdditionalFieldsProvider">
+        <arguments><argument name="fieldsProviders" xsi:type="array"><item name="willwright_category_sorting" xsi:type="object">Willwright\CategorySorting\Search\FieldsProvider</item></argument></arguments>
+    </virtualType>
+    <type name="Magento\Elasticsearch\SearchAdapter\Query\Builder\Sort">
+        <plugin name="willwright_category_recommended_sort" type="Willwright\CategorySorting\Plugin\SearchSort"/>
+    </type>
+    <type name="Magento\Config\Console\Command\ConfigSet\ProcessorFacade">
+        <plugin name="willwright_category_sorting_inventory_guard" type="Willwright\CategorySorting\Plugin\ConfigSet"/>
+    </type>
+</config>

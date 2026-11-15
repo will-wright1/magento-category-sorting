@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <section id="catalog">
+            <group id="willwright_category_sorting" translate="label" sortOrder="950" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Category Sorting</label>
+                <field id="enabled" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Use Recommended Category Sorting</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <backend_model>Willwright\CategorySorting\Model\Config\Backend\Enabled</backend_model>
+                    <config_path>willwright_category_sorting/general/enabled</config_path>
+                    <comment><model>Willwright\CategorySorting\Model\InventoryCompatibility</model></comment>
+                </field>
+                <field id="excluded_order_ids" translate="label comment" type="text" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Exclude Test Order Entity IDs</label>
+                    <config_path>willwright_category_sorting/general/excluded_order_ids</config_path>
+                    <comment>Comma-separated internal sales_order.entity_id values, not order numbers. Magento has no universal test-order flag. Changes take effect at the next nightly ranking refresh or manual reindex.</comment>
+                </field>
+                <field id="use_amasty_preorder" translate="label comment" type="select" sortOrder="30" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Use Amasty Preorder Index When Available</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <config_path>willwright_category_sorting/general/use_amasty_preorder</config_path>
+                    <comment>Optional integration. Native Magento backorders are always supported. Requires Amasty Preorder to be enabled with its index built.</comment>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

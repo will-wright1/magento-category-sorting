@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Mview/etc/mview.xsd">
+    <!-- No order-table triggers: sales age out nightly, while stock is compared every five minutes. -->
+    <view id="willwright_category_sorting" class="Willwright\CategorySorting\Model\Indexer\Ranking" group="indexer"/>
+</config>

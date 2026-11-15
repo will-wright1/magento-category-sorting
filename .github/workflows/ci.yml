@@ -1,0 +1,67 @@
+name: Package checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+      - run: composer validate --strict
+      - name: Check PHP syntax
+        run: find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
+      - name: Check distribution
+        run: |
+          mkdir -p dist
+          composer archive --format=zip --dir=dist --file=module-category-sorting
+          unzip -l dist/module-category-sorting.zip
+
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - php: '8.3'
+            magento: '2.4.8'
+          - php: '8.4'
+            magento: '2.4.8'
+    env:
+      MAGENTO_ROOT: ${{ github.workspace }}/magento-fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: module
+      - uses: actions/checkout@v4
+        with:
+          repository: magento/magento2
+          ref: ${{ matrix.magento }}
+          path: magento-fixture
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: bcmath, gd, intl, pdo_mysql, soap, sockets, xsl, zip
+          tools: composer:v2
+          coverage: none
+      - name: Prepare public Magento test fixture
+        working-directory: magento-fixture
+        run: |
+          php -r '$file="composer.json"; $data=json_decode(file_get_contents($file),true,512,JSON_THROW_ON_ERROR); $data["require-dev"]=["phpunit/phpunit"=>"^11.5"]; unset($data["repositories"], $data["scripts"]); file_put_contents($file,json_encode($data,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));'
+          composer update --no-interaction --no-plugins --no-scripts --prefer-dist --no-progress
+      - name: Run unit and Magento schema checks
+        working-directory: module
+        run: php "$MAGENTO_ROOT/vendor/bin/phpunit" -c phpunit.xml.dist --testsuite unit
+      - name: Run disposable MySQL and OpenSearch regression tests
+        if: matrix.php == '8.4'
+        working-directory: module
+        run: python3 tests/run-integration.py

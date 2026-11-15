@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Indexer/etc/indexer.xsd">
+    <indexer id="willwright_category_sorting" view_id="willwright_category_sorting" class="Willwright\CategorySorting\Model\Indexer\Ranking">
+        <title translate="true">Category Sorting</title>
+        <description translate="true">180-day net sales, product ratings and stock availability</description>
+        <dependencies><indexer id="cataloginventory_stock"/></dependencies>
+    </indexer>
+    <indexer id="catalogsearch_fulltext">
+        <dependencies><indexer id="willwright_category_sorting"/></dependencies>
+    </indexer>
+</config>
