@@ -9,6 +9,7 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Event\ManagerInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Model\Context;
+use Magento\Framework\Model\ResourceModel\AbstractResource;
 use Magento\Framework\Module\Manager;
 use Magento\Framework\Registry;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -72,7 +73,7 @@ final class EnablementValidationTest extends TestCase
         $context = $this->createStub(Context::class);
         $context->method('getEventDispatcher')->willReturn($this->createStub(ManagerInterface::class));
         return new Enabled($context, $this->createStub(Registry::class), $this->createStub(ScopeConfigInterface::class),
-            $this->createStub(TypeListInterface::class), $this->guard($msi));
+            $this->createStub(TypeListInterface::class), $this->guard($msi), $this->createStub(AbstractResource::class));
     }
 
     private function guard(bool $msi): InventoryCompatibility

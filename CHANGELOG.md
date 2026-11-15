@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 — 2026-11-15
+
+- Correct the Admin enablement backend's optional resource dependency to `Magento\Framework\Model\ResourceModel\AbstractResource`, fixing `setup:di:compile` and interceptor generation.
+- Validate every runtime constructor with Magento's DI class reader and generate the Admin backend interceptor in regression tests, including optional resource dependencies.
+
 ## 1.0.0 — 2026-11-15
 
 - Reject MSI activation in Admin and CLI, show the compatibility reason in Admin, and keep imported/pre-existing enabled settings inactive on unsupported inventory.
