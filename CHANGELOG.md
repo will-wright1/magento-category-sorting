@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 — 2026-11-16
+
+- Automatically support both legacy CatalogInventory and MSI, including default/custom stocks resolved for each website.
+- Read MSI aggregated indexed stock in bulk and account for outstanding order/cancellation reservations, native backorders, negative backorder limits, unmanaged stock and configurable variants. Preserve optional Amasty preorder integration.
+- Accept complete MSI configurations in Admin, CLI and runtime; retain the compatibility guard for incomplete MSI setups and disabled-store query suppression.
+- Resolve MSI services lazily so legacy projects can install and compile without MSI packages. Add the optional inventory indexer dependency only when MSI is registered.
+- Validate reservation-aware availability against Magento's native stock reader and compile DI in CI with MSI present and entirely absent.
+
 ## 1.0.2 — 2026-11-15
 
 - Add Recommended category sorting to Amasty Shopby's independent fulltext collection, which does not inherit Magento's native fulltext collection.

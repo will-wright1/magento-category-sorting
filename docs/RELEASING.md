@@ -4,7 +4,7 @@ The package is `willwright/module-category-sorting`, licensed MIT. The suggested
 
 ## First publication
 
-1. Complete the checks in [DEVELOPMENT.md](DEVELOPMENT.md), including staging DI compilation, schema/search indexing and storefront verification. Review the supported legacy-inventory scope before calling the release stable.
+1. Complete the checks in [DEVELOPMENT.md](DEVELOPMENT.md), including staging DI compilation, schema/search indexing and storefront verification. Review the supported inventory scope before calling the release stable.
 2. Commit the package, create a public GitHub repository and push `main`. If creating the suggested repository with GitHub CLI, the commands are:
 
    ```sh

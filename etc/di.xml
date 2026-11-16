@@ -1,6 +1,9 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
     <preference for="Willwright\CategorySorting\Api\AvailabilityProviderInterface" type="Willwright\CategorySorting\Model\ResourceModel\AvailabilitySource"/>
+    <type name="Magento\Framework\Indexer\Config\Converter">
+        <plugin name="willwright_category_sorting_optional_inventory_dependency" type="Willwright\CategorySorting\Plugin\InventoryIndexerDependency"/>
+    </type>
     <virtualType name="elasticsearch5FieldProvider" type="Magento\Elasticsearch\Model\Adapter\FieldMapper\Product\CompositeFieldProvider">
         <arguments><argument name="providers" xsi:type="array"><item name="willwright_category_sorting" xsi:type="object">Willwright\CategorySorting\Search\FieldMapping</item></argument></arguments>
     </virtualType>

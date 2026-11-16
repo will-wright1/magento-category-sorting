@@ -21,7 +21,7 @@ final class InventoryCompatibilityTest extends TestCase
         if ($supported) {
             $guard->assertSupported();
         } else {
-            self::assertStringContainsString('Multi Source Inventory (MSI) is enabled', $guard->getCommentText('1'));
+            self::assertStringContainsString('incomplete Multi Source Inventory', $guard->getCommentText('1'));
             $this->expectException(LocalizedException::class);
             $this->expectExceptionMessage(InventoryCompatibility::ERROR_MESSAGE);
             $guard->assertSupported();
@@ -32,6 +32,8 @@ final class InventoryCompatibilityTest extends TestCase
     {
         return [
             'legacy with MSI modules disabled' => [[], true],
+            'complete MSI' => [['Magento_Inventory', 'Magento_InventoryCatalog', 'Magento_InventorySales',
+                'Magento_InventoryIndexer', 'Magento_InventoryConfiguration', 'Magento_InventoryReservations'], true],
             'MSI inventory' => [['Magento_Inventory'], false],
             'MSI sales' => [['Magento_InventorySales'], false],
             'MSI indexer' => [['Magento_InventoryIndexer'], false],
@@ -39,12 +41,23 @@ final class InventoryCompatibilityTest extends TestCase
         ];
     }
 
-    public function testImportedOrPreviouslyEnabledMsiConfigurationIsInactiveAtRuntime(): void
+    public function testIncompleteImportedMsiConfigurationIsInactiveAtRuntime(): void
     {
         $scope = $this->createStub(ScopeConfigInterface::class);
         $scope->method('isSetFlag')->willReturn(true);
         self::assertFalse((new Config($scope, $this->guard(['Magento_InventorySales'])))->isEnabled(3));
         self::assertTrue((new Config($scope, $this->guard([])))->isEnabled(3));
+    }
+
+    public function testCompleteMsiUsesMsiAndCanBeEnabled(): void
+    {
+        $guard = $this->guard(self::inventoryModes()['complete MSI'][0]);
+        self::assertTrue($guard->isMsiEnabled());
+        self::assertFalse($this->guard([])->isMsiEnabled());
+        $scope = $this->createStub(ScopeConfigInterface::class);
+        $scope->method('isSetFlag')->willReturn(true);
+        self::assertTrue((new Config($scope, $guard))->isEnabled(3));
+        $guard->assertSupported();
     }
 
     public function testDisabledConfigurationDoesNotCheckInventory(): void

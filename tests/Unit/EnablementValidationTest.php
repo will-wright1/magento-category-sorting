@@ -21,13 +21,11 @@ use Willwright\CategorySorting\Plugin\ConfigSet;
 
 final class EnablementValidationTest extends TestCase
 {
-    public function testAdminRejectsEnablingSortingOnMsi(): void
+    public function testAdminAllowsEnablingSortingOnMsi(): void
     {
         $model = $this->backend(true);
         $model->setValue('1');
-        $this->expectException(LocalizedException::class);
-        $this->expectExceptionMessage(InventoryCompatibility::ERROR_MESSAGE);
-        $model->beforeSave();
+        self::assertSame($model, $model->beforeSave());
     }
 
     public function testAdminStillAllowsDisablingSortingOnMsi(): void
@@ -44,8 +42,17 @@ final class EnablementValidationTest extends TestCase
         self::assertSame($model, $model->beforeSave());
     }
 
+    public function testAdminRejectsIncompleteMsi(): void
+    {
+        $model = $this->backend(null);
+        $model->setValue('1');
+        $this->expectException(LocalizedException::class);
+        $this->expectExceptionMessage(InventoryCompatibility::ERROR_MESSAGE);
+        $model->beforeSave();
+    }
+
     #[DataProvider('cliCases')]
-    public function testCliValidatesEnablementIncludingLockedAndScopedConfiguration(string $path, string $value, bool $msi, bool $reject): void
+    public function testCliValidatesEnablementIncludingLockedAndScopedConfiguration(string $path, string $value, ?bool $msi, bool $reject): void
     {
         $plugin = new ConfigSet($this->guard($msi));
         if ($reject) {
@@ -61,14 +68,16 @@ final class EnablementValidationTest extends TestCase
     public static function cliCases(): array
     {
         return [
-            'MSI enable rejected' => [Config::XML_PATH_ENABLED, '1', true, true],
+            'MSI enable allowed' => [Config::XML_PATH_ENABLED, '1', true, false],
+            'incomplete MSI enable rejected' => [Config::XML_PATH_ENABLED, '1', null, true],
+            'incomplete MSI disable allowed' => [Config::XML_PATH_ENABLED, '0', null, false],
             'MSI disable allowed' => [Config::XML_PATH_ENABLED, '0', true, false],
             'legacy enable allowed' => [Config::XML_PATH_ENABLED, '1', false, false],
             'other configuration unaffected' => ['catalog/frontend/list_mode', '1', true, false],
         ];
     }
 
-    private function backend(bool $msi): Enabled
+    private function backend(?bool $msi): Enabled
     {
         $context = $this->createStub(Context::class);
         $context->method('getEventDispatcher')->willReturn($this->createStub(ManagerInterface::class));
@@ -76,10 +85,10 @@ final class EnablementValidationTest extends TestCase
             $this->createStub(TypeListInterface::class), $this->guard($msi), $this->createStub(AbstractResource::class));
     }
 
-    private function guard(bool $msi): InventoryCompatibility
+    private function guard(?bool $msi): InventoryCompatibility
     {
         $modules = $this->createStub(Manager::class);
-        $modules->method('isEnabled')->willReturn($msi);
+        $modules->method('isEnabled')->willReturnCallback(static fn(string $name): bool => $msi ?? $name === 'Magento_Inventory');
         return new InventoryCompatibility($modules);
     }
 }

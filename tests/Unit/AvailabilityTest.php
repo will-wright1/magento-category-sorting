@@ -61,4 +61,41 @@ final class AvailabilityTest extends TestCase
             'disabled parent' => [2, [0, 1], 2],
         ];
     }
+
+    #[DataProvider('msiCases')]
+    public function testMsiReservationAdjustedAvailability(array $overrides, int $expected, bool $quantityManaged = true): void
+    {
+        $row = $overrides + [
+            'enabled' => 1, 'assigned' => 1, 'salable' => 1, 'preorder' => 0, 'qty' => 10,
+            'manage_stock' => 1, 'use_config_manage_stock' => 0,
+            'backorders' => 0, 'use_config_backorders' => 0, 'min_qty' => 0, 'use_config_min_qty' => 0,
+        ];
+        self::assertSame($expected, (new Availability())->classifyMsi($row,
+            ['manage_stock' => true, 'backorders' => 2, 'min_qty' => -5.0], $quantityManaged));
+    }
+
+    public static function msiCases(): array
+    {
+        return [
+            'available' => [[], 0],
+            'reserved last unit without backorders' => [['qty' => 0], 2],
+            'reserved last unit with backorders' => [['qty' => 0, 'backorders' => 1], 1],
+            'unlimited backorders' => [['qty' => -1000, 'backorders' => 2], 1],
+            'limited backorders remaining' => [['qty' => -4, 'min_qty' => -5, 'backorders' => 1], 1],
+            'limited backorders exhausted' => [['qty' => -5, 'min_qty' => -5, 'backorders' => 1], 2],
+            'limited backorders over limit' => [['qty' => -6, 'min_qty' => -5, 'backorders' => 2], 2],
+            'negative buffer with physical stock' => [['qty' => 1, 'min_qty' => -5, 'backorders' => 1], 0],
+            'positive threshold exhausted' => [['qty' => 5, 'min_qty' => 5], 2],
+            'positive threshold with backorders' => [['qty' => 5, 'min_qty' => 5, 'backorders' => 1], 1],
+            'inherited limited backorders' => [['qty' => -4, 'use_config_backorders' => 1, 'use_config_min_qty' => 1], 1],
+            'inherited limit exhausted' => [['qty' => -5, 'use_config_backorders' => 1, 'use_config_min_qty' => 1], 2],
+            'unmanaged stock' => [['qty' => -10, 'manage_stock' => 0], 0],
+            'unavailable index overrides backorders' => [['salable' => 0, 'backorders' => 1], 2],
+            'disabled product' => [['enabled' => 0], 2],
+            'unassigned website' => [['assigned' => 0], 2],
+            'composite has no physical quantity' => [['qty' => 0, 'backorders' => 1], 0, false],
+            'composite unavailable' => [['qty' => 0, 'salable' => 0], 2, false],
+            'Amasty purchasable preorder' => [['qty' => 0, 'preorder' => 1], 1],
+        ];
+    }
 }

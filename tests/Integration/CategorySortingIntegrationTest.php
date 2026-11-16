@@ -8,8 +8,10 @@ use Willwright\CategorySorting\Model\Availability;
 use Willwright\CategorySorting\Model\Config;
 use Willwright\CategorySorting\Model\InventoryCompatibility;
 use Willwright\CategorySorting\Model\ResourceModel\AvailabilitySource;
+use Willwright\CategorySorting\Model\ResourceModel\MsiStockSource;
 use Willwright\CategorySorting\Model\ResourceModel\PreorderSource;
 use Magento\Framework\Module\Manager;
+use Magento\Framework\ObjectManagerInterface;
 use Willwright\CategorySorting\Model\ResourceModel\IndexStorage;
 use Willwright\CategorySorting\Model\ResourceModel\RatingsSource;
 use Willwright\CategorySorting\Model\ResourceModel\SalesSource;
@@ -25,6 +27,7 @@ use Magento\Elasticsearch\SearchAdapter\Query\Builder\Sort\ExpressionBuilder;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Adapter\Pdo\Mysql;
 use Magento\Framework\DB\Logger\Quiet;
+use Magento\Framework\DB\Platform\Quote;
 use Magento\Framework\DB\Select\SelectRenderer;
 use Magento\Framework\DB\SelectFactory;
 use Magento\Framework\EntityManager\EntityMetadataInterface;
@@ -36,8 +39,10 @@ use Magento\Framework\Setup\Declaration\Schema\Dto\Factories\Table;
 use Magento\Framework\Stdlib\DateTime;
 use Magento\Framework\Stdlib\StringUtils;
 use Magento\Store\Model\Store;
+use Magento\Store\Model\Website;
 use Magento\Store\Model\StoreManagerInterface;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionClass;
 use RuntimeException;
 
@@ -65,8 +70,16 @@ final class CategorySortingIntegrationTest extends TestCase
                 throw new RuntimeException('Only numeric localhost test-service ports are accepted.');
             }
         }
+        // Use Magento's real select renderers too: MSI's bulk reader builds Select objects.
+        $renderers = [];
+        $parts = ['distinct', 'columns', 'union', 'from', 'where', 'group', 'having', 'order', 'limitcount', 'forupdate'];
+        foreach (['Distinct', 'Columns', 'Union', 'From', 'Where', 'Group', 'Having', 'Order', 'Limit', 'ForUpdate'] as $i => $name) {
+            $class = 'Magento\\Framework\\DB\\Select\\' . $name . 'Renderer';
+            $renderer = (new ReflectionClass($class))->getConstructor() ? new $class(new Quote()) : new $class();
+            $renderers[] = ['renderer' => $renderer, 'sort' => $i, 'part' => $parts[$i]];
+        }
         $this->db = new Mysql(new StringUtils(), new DateTime(), new Quiet(),
-            new SelectFactory(new SelectRenderer([])), [
+            new SelectFactory(new SelectRenderer($renderers)), [
                 'host' => '127.0.0.1:' . $this->services['mysql_port'], 'username' => 'root',
                 'password' => $this->services['mysql_password'], 'dbname' => 'ranking_test',
                 'initStatements' => 'SET NAMES utf8mb4',
@@ -231,6 +244,69 @@ final class CategorySortingIntegrationTest extends TestCase
         self::assertSame([101 => 1], $this->availabilitySource(true)->getRanks([101], 3));
     }
 
+    #[DataProvider('msiStocks')]
+    public function testMsiUsesWebsiteStockReservationsAndBackorderLimits(int $stockId): void
+    {
+        $source = $this->availabilitySource(false, $stockId);
+        foreach (range(101, 109) as $id) {
+            $this->product($id, 'simple');
+            $this->insert('inventory_stock_7', ['sku' => 'sku-' . $id, 'quantity' => 10, 'is_salable' => 1]);
+        }
+        foreach ([[101, -9], [101, -2], [101, 1], [102, -10], [103, -13], [104, -15], [105, -11], [106, -10]] as [$id, $qty]) {
+            $this->insert('inventory_reservation', ['stock_id' => $stockId, 'sku' => 'sku-' . $id, 'quantity' => $qty]);
+        }
+        // Reservations belonging to another stock cannot consume this website's stock.
+        $this->insert('inventory_reservation', ['stock_id' => 99, 'sku' => 'sku-107', 'quantity' => -1000]);
+        $this->db->update(self::PREFIX . 'inventory_stock_7', ['sku' => 'SKU-101'], ['sku = ?' => 'sku-101']);
+        $this->db->update(self::PREFIX . 'inventory_reservation', ['sku' => 'SKU-101'], ['sku = ?' => 'sku-101']);
+        $this->db->update(self::PREFIX . 'cataloginventory_stock_item', ['backorders' => 1], ['product_id = ?' => 102]);
+        $this->db->update(self::PREFIX . 'cataloginventory_stock_item', ['backorders' => 2, 'min_qty' => -5], ['product_id IN (?)' => [103, 104]]);
+        $this->db->update(self::PREFIX . 'cataloginventory_stock_item', ['manage_stock' => 0], ['product_id = ?' => 105]);
+        $this->db->update(self::PREFIX . 'cataloginventory_stock_item', ['backorders' => 2, 'min_qty' => -5], ['product_id = ?' => 106]);
+        $this->db->update(self::PREFIX . 'catalog_product_entity_int', ['value' => 2], ['entity_id = ?' => 108]);
+        $this->db->delete(self::PREFIX . 'catalog_product_website', ['product_id = ?' => 109]);
+        self::assertSame([101 => 2, 102 => 1, 103 => 1, 104 => 2, 105 => 0, 106 => 1, 107 => 0, 108 => 2, 109 => 2],
+            $source->getRanks(range(101, 109), 3));
+        // Cancellation compensation restores immediately available stock on the next read.
+        $this->insert('inventory_reservation', ['stock_id' => $stockId, 'sku' => 'sku-101', 'quantity' => 1]);
+        self::assertSame([101 => 0], $source->getRanks([101], 3));
+    }
+
+    public static function msiStocks(): array
+    {
+        return ['MSI default stock' => [1], 'MSI custom website stock' => [7]];
+    }
+
+    public function testMsiConfigurablesChoosePurchasableChildrenAndRespectWebsiteStockAndPreorder(): void
+    {
+        $source = $this->availabilitySource(true, 7);
+        foreach ([1000 => 'configurable', 1001 => 'simple', 1002 => 'simple', 1010 => 'bundle', 1020 => 'grouped'] as $id => $type) {
+            $this->product($id, $type);
+            $this->insert('inventory_stock_7', ['sku' => 'sku-' . $id, 'quantity' => 0, 'is_salable' => 1]);
+        }
+        foreach ([1001, 1002] as $child) {
+            $this->insert('catalog_product_super_link', ['parent_id' => 1000, 'product_id' => $child]);
+        }
+        $this->db->update(self::PREFIX . 'inventory_stock_7', ['quantity' => 5], ['sku = ?' => 'sku-1001']);
+        $this->db->update(self::PREFIX . 'cataloginventory_stock_item', ['backorders' => 1], ['product_id = ?' => 1002]);
+        self::assertSame([1000 => 0, 1010 => 0, 1020 => 0], $source->getRanks([1000, 1010, 1020], 3));
+        $this->insert('inventory_reservation', ['stock_id' => 7, 'sku' => 'sku-1001', 'quantity' => -5]);
+        self::assertSame([1000 => 1], $source->getRanks([1000], 3));
+        $this->db->update(self::PREFIX . 'catalog_product_entity_int', ['value' => 2], ['entity_id = ?' => 1002]);
+        self::assertSame([1000 => 2], $source->getRanks([1000], 3));
+        // Other website resolves default stock, where both children have physical stock.
+        $this->insert('catalog_product_website', ['product_id' => 1000, 'website_id' => 2]);
+        $this->insert('catalog_product_website', ['product_id' => 1001, 'website_id' => 2]);
+        self::assertSame([1000 => 0], $this->availabilitySource(false, 1, 2)->getRanks([1000], 4));
+        // Legacy stock must never fill missing custom-stock rows.
+        $this->db->delete(self::PREFIX . 'inventory_stock_7', ['sku = ?' => 'sku-1010']);
+        self::assertSame([1010 => 2], $source->getRanks([1010], 3));
+        $this->insert('amasty_preorder_product_index', ['product_id' => 1020, 'website_id' => 1]);
+        self::assertSame([1020 => 1], $source->getRanks([1020], 3));
+        $this->db->update(self::PREFIX . 'inventory_stock_7', ['is_salable' => 0], ['sku = ?' => 'sku-1020']);
+        self::assertSame([1020 => 2], $source->getRanks([1020], 3));
+    }
+
     public function testOpenSearchRanksBeforePagingAndPreservesFiltersAndManualPriceSort(): void
     {
         $index = 'category-sorting-regression';
@@ -290,15 +366,19 @@ final class CategorySortingIntegrationTest extends TestCase
             static fn() => [], $request);
     }
 
-    private function availabilitySource(bool $amastyEnabled = true): AvailabilitySource
+    private function availabilitySource(bool $amastyEnabled = true, ?int $msiStockId = null, int $websiteId = 1): AvailabilitySource
     {
         $stock = $this->createStub(StockConfigurationInterface::class);
         $stock->method('getDefaultScopeId')->willReturn(0);
         $stock->method('getManageStock')->willReturn(1);
         $stock->method('getBackorders')->willReturn(0);
         $stock->method('getMinQty')->willReturn(0);
+        $stock->method('getIsQtyTypeIds')->willReturn(['simple' => 1, 'virtual' => 1, 'downloadable' => 1]);
         $store = $this->createStub(Store::class);
-        $store->method('getWebsiteId')->willReturn(1);
+        $store->method('getWebsiteId')->willReturn($websiteId);
+        $website = $this->createStub(Website::class);
+        $website->method('getCode')->willReturn('website-' . $websiteId);
+        $store->method('getWebsite')->willReturn($website);
         $stores = $this->createStub(StoreManagerInterface::class);
         $stores->method('getStore')->willReturn($store);
         $attribute = (new ReflectionClass(Attribute::class))->newInstanceWithoutConstructor();
@@ -314,15 +394,47 @@ final class CategorySortingIntegrationTest extends TestCase
         $config = $this->createStub(Config::class);
         $config->method('useAmastyPreorder')->willReturn(true);
         $preorders = new PreorderSource($this->resource, $modules, $config);
+        $inventoryModules = $this->createStub(Manager::class);
+        $inventoryModules->method('isEnabled')->willReturn($msiStockId !== null);
+        if ($msiStockId !== null) {
+            $msi = $this->msiSource($msiStockId, 'website-' . $websiteId);
+        } else {
+            $msi = $this->createMock(MsiStockSource::class);
+            $msi->expects(self::never())->method('getData');
+        }
         return new AvailabilitySource($this->resource, $stock, $stores, $eav, $pool, new Availability(), $preorders,
-            new InventoryCompatibility($this->createStub(Manager::class)));
+            new InventoryCompatibility($inventoryModules), $msi);
+    }
+
+    private function msiSource(int $stockId, string $websiteCode): MsiStockSource
+    {
+        if (!class_exists(\Magento\InventoryIndexer\Model\ResourceModel\GetStockItemsData::class)) {
+            self::markTestSkipped('MSI packages absent; native MSI readers are exercised in the MSI CI job.');
+        }
+        $stock = $this->createStub(\Magento\InventoryApi\Api\Data\StockInterface::class);
+        $stock->method('getStockId')->willReturn($stockId);
+        $resolver = $this->createMock(\Magento\InventorySalesApi\Api\StockResolverInterface::class);
+        $resolver->expects(self::atLeastOnce())->method('execute')->with('website', $websiteCode)->willReturn($stock);
+        $default = $this->createStub(\Magento\InventoryCatalogApi\Api\DefaultStockProviderInterface::class);
+        $default->method('getId')->willReturn(1);
+        $table = $this->createStub(\Magento\InventoryIndexer\Model\StockIndexTableNameResolverInterface::class);
+        $table->method('execute')->willReturn(self::PREFIX . 'inventory_stock_' . $stockId);
+        $items = new \Magento\InventoryIndexer\Model\ResourceModel\GetStockItemsData($this->resource, $table, $default,
+            $this->createStub(\Magento\InventoryIndexer\Model\ResourceModel\StockItemDataHandler::class));
+        $objects = $this->createStub(ObjectManagerInterface::class);
+        $objects->method('get')->willReturnCallback(static fn(string $type) => match ($type) {
+            \Magento\InventorySalesApi\Api\StockResolverInterface::class => $resolver,
+            \Magento\InventorySalesApi\Model\GetStockItemsDataInterface::class => $items,
+            default => throw new RuntimeException('Unexpected MSI service: ' . $type),
+        });
+        return new MsiStockSource($this->resource, $objects);
     }
 
     private function resetFixtures(): void
     {
         $tables = [
             'willwright_category_sorting' => null,
-            'catalog_product_entity' => 'entity_id INT UNSIGNED PRIMARY KEY, type_id VARCHAR(32)',
+            'catalog_product_entity' => 'entity_id INT UNSIGNED PRIMARY KEY, sku VARCHAR(64) UNIQUE, type_id VARCHAR(32)',
             'store' => 'store_id SMALLINT UNSIGNED PRIMARY KEY',
             'catalog_product_website' => 'product_id INT, website_id INT, PRIMARY KEY(product_id, website_id)',
             'catalog_product_super_link' => 'product_id INT, parent_id INT, PRIMARY KEY(product_id, parent_id)',
@@ -330,6 +442,8 @@ final class CategorySortingIntegrationTest extends TestCase
             'cataloginventory_stock_status' => 'product_id INT, website_id INT, stock_id INT, qty DECIMAL(12,4), stock_status INT, PRIMARY KEY(product_id, website_id, stock_id)',
             'cataloginventory_stock_item' => 'product_id INT, stock_id INT, qty DECIMAL(12,4), manage_stock INT, use_config_manage_stock INT, backorders INT, use_config_backorders INT, min_qty DECIMAL(12,4), use_config_min_qty INT, PRIMARY KEY(product_id, stock_id)',
             'amasty_preorder_product_index' => 'product_id INT, website_id INT, PRIMARY KEY(product_id, website_id)',
+            'inventory_stock_7' => 'sku VARCHAR(64) PRIMARY KEY, quantity DECIMAL(12,4), is_salable INT',
+            'inventory_reservation' => 'stock_id INT, sku VARCHAR(64), quantity DECIMAL(12,4)',
             'sales_order' => 'entity_id INT PRIMARY KEY, created_at DATETIME, state VARCHAR(32), base_grand_total DECIMAL(20,4), base_total_paid DECIMAL(20,4) NULL, store_id INT, customer_group_id INT',
             'sales_order_item' => 'item_id INT PRIMARY KEY, order_id INT, product_id INT, parent_item_id INT NULL, qty_ordered DECIMAL(12,4), qty_invoiced DECIMAL(12,4), qty_canceled DECIMAL(12,4), qty_refunded DECIMAL(12,4)',
             'review_entity' => 'entity_id INT PRIMARY KEY, entity_code VARCHAR(32)',
@@ -380,7 +494,7 @@ final class CategorySortingIntegrationTest extends TestCase
 
     private function product(int $id, string $type): void
     {
-        $this->insert('catalog_product_entity', ['entity_id' => $id, 'type_id' => $type]);
+        $this->insert('catalog_product_entity', ['entity_id' => $id, 'sku' => 'sku-' . $id, 'type_id' => $type]);
         $this->insert('catalog_product_website', ['product_id' => $id, 'website_id' => 1]);
         $this->insert('catalog_product_entity_int', ['entity_id' => $id, 'attribute_id' => 99, 'store_id' => 0, 'value' => 1]);
         $this->insert('cataloginventory_stock_status', ['product_id' => $id, 'website_id' => 0, 'stock_id' => 1, 'qty' => 10, 'stock_status' => 1]);

@@ -9,7 +9,12 @@ use Magento\Framework\Module\Manager;
 
 class InventoryCompatibility implements CommentInterface
 {
-    public const ERROR_MESSAGE = 'Category Sorting requires legacy CatalogInventory. Multi Source Inventory (MSI) is enabled, so Recommended sorting is unavailable with the bundled availability provider.';
+    public const ERROR_MESSAGE = 'Category Sorting detected an incomplete Multi Source Inventory (MSI) configuration. Enable the Inventory, InventoryCatalog, InventorySales, InventoryIndexer, InventoryConfiguration and InventoryReservations modules together, or disable MSI to use legacy CatalogInventory.';
+
+    private const MSI_MODULES = [
+        'Magento_Inventory', 'Magento_InventoryCatalog', 'Magento_InventorySales',
+        'Magento_InventoryIndexer', 'Magento_InventoryConfiguration', 'Magento_InventoryReservations',
+    ];
 
     public function __construct(private Manager $modules)
     {
@@ -17,12 +22,13 @@ class InventoryCompatibility implements CommentInterface
 
     public function isSupported(): bool
     {
-        foreach (['Magento_Inventory', 'Magento_InventorySales', 'Magento_InventoryIndexer'] as $module) {
-            if ($this->modules->isEnabled($module)) {
-                return false;
-            }
-        }
-        return true;
+        $enabled = array_filter(self::MSI_MODULES, fn(string $module): bool => $this->modules->isEnabled($module));
+        return !$enabled || count($enabled) === count(self::MSI_MODULES);
+    }
+
+    public function isMsiEnabled(): bool
+    {
+        return $this->modules->isEnabled('Magento_InventorySales') && $this->isSupported();
     }
 
     public function assertSupported(): void

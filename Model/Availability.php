@@ -32,4 +32,25 @@ class Availability
         return $parentRank === self::UNAVAILABLE || !$childRanks
             ? self::UNAVAILABLE : min($childRanks);
     }
+
+    /** MSI quantity is aggregated stock plus outstanding reservations, before subtracting min_qty. */
+    public function classifyMsi(array $row, array $defaults, bool $quantityManaged): int
+    {
+        if (!$quantityManaged) {
+            // Composite quantities are not physical stock; use their indexed status and child ranks instead.
+            $row['use_config_manage_stock'] = 0;
+            $row['manage_stock'] = 0;
+        } else {
+            $manageStock = (int)$row['use_config_manage_stock'] ? $defaults['manage_stock'] : (bool)$row['manage_stock'];
+            $backorders = (int)$row['use_config_backorders'] ? $defaults['backorders'] : (int)$row['backorders'];
+            $minQty = (int)$row['use_config_min_qty'] ? $defaults['min_qty'] : (float)$row['min_qty'];
+            // Negative min_qty permits limited backorders, not immediately available stock.
+            // An explicit purchasable Amasty preorder keeps its own indexed salability rules.
+            if ($manageStock && !(int)$row['preorder'] && ($backorders === 0 || $minQty < 0)
+                && (float)$row['qty'] <= $minQty) {
+                $row['salable'] = 0;
+            }
+        }
+        return $this->classify($row, $defaults);
+    }
 }

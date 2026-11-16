@@ -13,7 +13,7 @@ use Magento\Store\Model\StoreManagerInterface;
 use Willwright\CategorySorting\Api\AvailabilityProviderInterface;
 use Willwright\CategorySorting\Model\InventoryCompatibility;
 
-/** Bulk reads for Magento's legacy CatalogInventory (MSI is not supported). */
+/** Bulk product/configuration reads with automatically selected legacy or MSI stock data. */
 class AvailabilitySource implements AvailabilityProviderInterface
 {
     public function __construct(
@@ -24,7 +24,8 @@ class AvailabilitySource implements AvailabilityProviderInterface
         private MetadataPool $metadataPool,
         private Availability $availability,
         private PreorderSource $preorders,
-        private InventoryCompatibility $compatibility
+        private InventoryCompatibility $compatibility,
+        private MsiStockSource $msiStock
     ) {
     }
 
@@ -35,6 +36,7 @@ class AvailabilitySource implements AvailabilityProviderInterface
             return [];
         }
         $this->compatibility->assertSupported();
+        $msi = $this->compatibility->isMsiEnabled();
         $db = $this->resource->getConnection();
         $table = fn(string $name): string => $db->quoteIdentifier($this->resource->getTableName($name));
         $links = $db->fetchAll('SELECT parent_id, product_id FROM ' . $table('catalog_product_super_link')
@@ -44,13 +46,17 @@ class AvailabilitySource implements AvailabilityProviderInterface
             $allIds[] = (int)$link['product_id'];
         }
         $idList = implode(',', array_unique($allIds));
-        $websiteId = (int)$this->stores->getStore($storeId)->getWebsiteId();
+        $store = $this->stores->getStore($storeId);
+        $websiteId = (int)$store->getWebsiteId();
         $stockScope = (int)$this->stockConfig->getDefaultScopeId();
         $statusId = (int)$this->eavConfig->getAttribute('catalog_product', 'status')->getAttributeId();
         $linkField = $db->quoteIdentifier($this->metadataPool->getMetadata(ProductInterface::class)->getLinkField());
 
-        $sql = 'SELECT p.entity_id, p.type_id, (COALESCE(s.value, d.value, 2) = 1) AS enabled,
-                (w.product_id IS NOT NULL) AS assigned, COALESCE(ss.stock_status, 0) AS salable,
+        $stockStatus = $msi ? '0' : 'COALESCE(ss.stock_status, 0)';
+        $stockJoin = $msi ? '' : ' LEFT JOIN ' . $table('cataloginventory_stock_status') . " AS ss
+                ON ss.product_id = p.entity_id AND ss.stock_id = 1 AND ss.website_id = $stockScope";
+        $sql = 'SELECT p.entity_id, p.sku, p.type_id, (COALESCE(s.value, d.value, 2) = 1) AS enabled,
+                (w.product_id IS NOT NULL) AS assigned, ' . $stockStatus . ' AS salable,
                 COALESCE(si.qty, 0) AS qty, COALESCE(si.manage_stock, 1) AS manage_stock,
                 COALESCE(si.use_config_manage_stock, 1) AS use_config_manage_stock,
                 COALESCE(si.backorders, 0) AS backorders,
@@ -63,8 +69,7 @@ class AvailabilitySource implements AvailabilityProviderInterface
                 ON d.$linkField = p.$linkField AND d.attribute_id = $statusId AND d.store_id = 0
             LEFT JOIN " . $table('catalog_product_entity_int') . " AS s
                 ON s.$linkField = p.$linkField AND s.attribute_id = $statusId AND s.store_id = $storeId
-            LEFT JOIN " . $table('cataloginventory_stock_status') . " AS ss
-                ON ss.product_id = p.entity_id AND ss.stock_id = 1 AND ss.website_id = $stockScope
+            " . $stockJoin . "
             LEFT JOIN " . $table('cataloginventory_stock_item') . ' AS si
                 ON si.product_id = p.entity_id AND si.stock_id = 1
             WHERE p.entity_id IN (' . $idList . ')';
@@ -76,11 +81,20 @@ class AvailabilitySource implements AvailabilityProviderInterface
         $rows = [];
         $ranks = [];
         $preorders = $this->preorders->getProductIds($allIds, $websiteId);
-        foreach ($db->fetchAll($sql) as $row) {
+        $productRows = $db->fetchAll($sql);
+        $stockData = $msi ? $this->msiStock->getData(array_column($productRows, 'sku'), (string)$store->getWebsite()->getCode()) : [];
+        $qtyTypes = $msi ? $this->stockConfig->getIsQtyTypeIds() : [];
+        foreach ($productRows as $row) {
             $id = (int)$row['entity_id'];
             $row['preorder'] = isset($preorders[$id]) ? 1 : 0;
             $rows[$id] = $row;
-            $ranks[$id] = $this->availability->classify($row, $defaults);
+            if ($msi) {
+                $row['salable'] = (int)($stockData[$row['sku']]['is_salable'] ?? false);
+                $row['qty'] = $stockData[$row['sku']]['quantity'] ?? 0.0;
+                $ranks[$id] = $this->availability->classifyMsi($row, $defaults, !empty($qtyTypes[$row['type_id']]));
+            } else {
+                $ranks[$id] = $this->availability->classify($row, $defaults);
+            }
         }
         $children = [];
         foreach ($links as $link) {

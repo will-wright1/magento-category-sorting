@@ -20,7 +20,7 @@ Customers can still choose the existing price, name or position orders. Search r
 
 - Magento Open Source 2.4.8 or later in the 2.4 series, PHP 8.3 or later within Magento's supported PHP versions.
 - Magento's standard OpenSearch/Elasticsearch category search adapter with either Magento's native fulltext collection or Amasty Shopby's fulltext collection. Other replacement search engines/collections need separate integration testing.
-- **Legacy CatalogInventory, with MSI disabled.** Multi Source Inventory, reservations and multiple inventory stocks are not supported by the bundled availability provider. Activation through Admin or `config:set` is rejected when MSI is active, with an explanation beside the Admin setting. Runtime checks also keep Recommended sorting inactive if an enabled value was imported or MSI was enabled later; Magento's normal category sorting remains available. An `AvailabilityProviderInterface` is available for a project-specific replacement; see [extension points](docs/DEVELOPMENT.md#extension-points).
+- **Legacy CatalogInventory or Multi Source Inventory (MSI).** The module automatically selects the inventory reader from enabled Magento modules. MSI uses the stock assigned to the store's website, aggregated indexed quantities and outstanding reservations, including the default stock and custom stocks. No MSI packages are required for legacy installations. An `AvailabilityProviderInterface` remains available for custom inventory integrations; see [extension points](docs/DEVELOPMENT.md#extension-points).
 - Magento cron and the stock/search indexers must be running.
 
 Amasty Preorder is optional. When its module is enabled, its index table exists, and the integration setting is enabled, website-specific preorder designations are included. Native Magento backorders work without Amasty.
@@ -32,7 +32,7 @@ The module includes no theme overrides, customer records, order data or project 
 Run in your Magento project:
 
 ```sh
-composer require willwright/module-category-sorting:^1.0
+composer require willwright/module-category-sorting:^1.1
 php bin/magento module:enable Willwright_CategorySorting
 php bin/magento setup:upgrade
 php bin/magento setup:di:compile
@@ -49,15 +49,32 @@ php bin/magento cache:clean block_html full_page
 php bin/magento maintenance:disable
 ```
 
+On MSI installations, run the `inventory` indexer after `cataloginventory_stock` and before `willwright_category_sorting`. The module automatically adds this dependency when the MSI indexer is registered. For example:
+
+```sh
+php bin/magento indexer:reindex cataloginventory_stock inventory willwright_category_sorting catalogsearch_fulltext
+```
+
 If Amasty Preorder is installed and used, reindex `amasty_preorder_product_preorder` after stock and before the ranking indexer. The optional indexer is deliberately not a required dependency. A full reindex of `catalogsearch_fulltext` is required on first installation to create the numeric field mappings; a partial product reindex is insufficient.
 
 Retain your project's normal static-content deployment and external cache-purge steps. Avoid running another index rebuild concurrently. If indexing fails, resolve the error and finish rebuilding before leaving maintenance mode.
 
 Settings are under **Stores → Configuration → Catalog → Catalog → Category Sorting**. Enablement can be overridden by website or store view. Test-order exclusions and Amasty integration are global settings. If a store already has an explicit disabled override, change that override as well.
 
-The inventory guard checks enabled `Magento_Inventory`, `Magento_InventorySales` and `Magento_InventoryIndexer` modules. Installed but disabled MSI packages do not block legacy inventory. The guard does not change your inventory configuration.
+The inventory guard accepts legacy inventory and complete MSI setups. A partially enabled MSI setup is rejected on Admin/CLI activation and kept inactive at runtime; its core Inventory, InventoryCatalog, InventorySales, InventoryIndexer, InventoryConfiguration and InventoryReservations modules must be enabled together. Installed but disabled MSI packages and API contracts alone do not block legacy inventory. The guard does not change your inventory configuration.
 
 For an unpublished GitHub package or a local checkout, see [development installation](docs/DEVELOPMENT.md).
+
+## Upgrade from 1.0.x
+
+```sh
+composer require willwright/module-category-sorting:^1.1 --with-dependencies
+php bin/magento setup:upgrade
+php bin/magento setup:di:compile
+php bin/magento cache:clean config
+```
+
+Enable Recommended sorting at the appropriate scope if it was previously blocked by MSI, then rebuild stock, ranking and the full search index using the sequence above during your deployment window. Existing legacy inventory settings continue to work.
 
 ## Sales and availability rules
 
@@ -68,7 +85,7 @@ For an unpublished GitHub package or a local checkout, see [development installa
 - Only top-level order items count, avoiding double counting of configurable/bundle child rows. Standalone sales of a variant also contribute to its currently linked configurable parents.
 - Known test **order entity IDs**, rather than displayed order numbers, can be excluded in configuration. Exclusion changes take effect at the next full metrics refresh.
 - Ratings use Magento's store-specific approved-review aggregate. Unreviewed products have zero rating; configurable parents use their own displayed rating. There is no new-product boost.
-- Availability respects enabled status, website assignment, indexed salability and stock settings. Backorders without immediate stock are demoted. An explicit Amasty preorder designation also demotes positive-stock products.
+- Availability respects enabled status, website assignment, indexed salability and inherited/product stock settings. MSI reservations reduce immediately available quantity and compensation reservations restore it. Products without backorders become unavailable when their remaining quantity reaches the out-of-stock threshold. Backorders without immediate stock are demoted; a negative threshold permits limited backorders until that limit is reached. Unmanaged stock remains immediately available when indexed as salable. An explicit purchasable Amasty preorder designation also demotes positive-stock products.
 - A configurable parent uses its best purchasable variant, while the parent itself must remain enabled and salable. Bundles and grouped products use their native indexed stock status, plus optional Amasty composite designations.
 
 ## Refresh and recovery

@@ -34,8 +34,13 @@ jobs:
         include:
           - php: '8.3'
             magento: '2.4.8'
+            inventory: legacy
           - php: '8.4'
             magento: '2.4.8'
+            inventory: legacy
+          - php: '8.4'
+            magento: '2.4.8'
+            inventory: msi
     env:
       MAGENTO_ROOT: ${{ github.workspace }}/magento-fixture
     steps:
@@ -47,6 +52,19 @@ jobs:
           repository: magento/magento2
           ref: ${{ matrix.magento }}
           path: magento-fixture
+      - uses: actions/checkout@v4
+        if: matrix.inventory == 'msi'
+        with:
+          repository: magento/inventory
+          ref: '1.2.8'
+          path: inventory-fixture
+      - name: Add optional MSI source modules
+        if: matrix.inventory == 'msi'
+        run: |
+          for registration in inventory-fixture/Inventory*/registration.php; do
+            module=$(dirname "$registration")
+            cp -R "$module" "magento-fixture/app/code/Magento/$(basename "$module")"
+          done
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
