@@ -9,7 +9,7 @@ Package: `willwright/module-category-sorting` · Magento module: `Willwright_Cat
 Recommended applies these rules in order, inside the search engine before pagination:
 
 1. Immediately available stock, then preorder/backorder, then unavailable products.
-2. Net paid units sold over the last 180 days, highest first.
+2. Net paid product sales value over the last 180 days, highest first.
 3. Approved product review percentage, highest first.
 4. Magento's indexed price for the current customer group and website, highest first.
 5. Product ID, lowest first, to stabilise page boundaries.
@@ -32,7 +32,7 @@ The module includes no theme overrides, customer records, order data or project 
 Run in your Magento project:
 
 ```sh
-composer require willwright/module-category-sorting:^1.1
+composer require willwright/module-category-sorting:^1.2
 php bin/magento module:enable Willwright_CategorySorting
 php bin/magento setup:upgrade
 php bin/magento setup:di:compile
@@ -65,24 +65,28 @@ The inventory guard accepts legacy inventory and complete MSI setups. A partiall
 
 For an unpublished GitHub package or a local checkout, see [development installation](docs/DEVELOPMENT.md).
 
-## Upgrade from 1.0.x
+## Upgrade from 1.0.x or 1.1.x
 
 ```sh
-composer require willwright/module-category-sorting:^1.1 --with-dependencies
+composer require willwright/module-category-sorting:^1.2 --with-dependencies
 php bin/magento setup:upgrade
 php bin/magento setup:di:compile
 php bin/magento cache:clean config
 ```
 
-Enable Recommended sorting at the appropriate scope if it was previously blocked by MSI, then rebuild stock, ranking and the full search index using the sequence above during your deployment window. Existing legacy inventory settings continue to work.
+This release changes Recommended from unit volume to sales value. Run `setup:upgrade` before rebuilding: value has its own snapshot column and search field, so old unit counts are never interpreted as money. Rebuild the ranking snapshot and the **full** search index during your deployment window using the sequence above; a partial search reindex cannot create the new mapping. The five-minute refresh also requests a full metrics build on the first run after this upgrade.
+
+Enable Recommended sorting at the appropriate scope if it was previously blocked by MSI. Existing legacy inventory settings continue to work.
 
 ## Sales and availability rules
 
 - Sales across all stores and customer groups contribute to each product's total. There is no channel restriction; paid POS, trade and web orders all count.
 - The 180-day window uses the order's original creation timestamp in UTC. Refunds reduce the original contribution; future orders are excluded.
-- Orders must be in `processing` or `complete` and fully paid. A rounding tolerance of 0.0001 is allowed; qualifying free orders count. Unpaid or partially paid orders do not count.
-- Quantities use invoiced units capped at ordered units less cancellations, minus refunds, with a floor of zero. Fully paid orders without invoiced units use ordered units less cancellations.
-- Only top-level order items count, avoiding double counting of configurable/bundle child rows. Standalone sales of a variant also contribute to its currently linked configurable parents.
+- Orders must be in `processing` or `complete` and fully paid. A rounding tolerance of 0.0001 is allowed; free product lines contribute zero sales value. Unpaid or partially paid orders do not count.
+- Sales value uses historical invoiced product amounts after line discounts, capped to uncancelled quantities. Fully paid POS/orders without invoices use the discounted order-line amount prorated for cancellations. Credit memo product amounts reduce the contribution, including monetary credits without returned units; each line has a floor of zero. Historical monetary fields must be populated by order-import integrations.
+- Value excludes tax and delivery. Magento's discount tax compensation is included when calculating tax-exclusive discounts and refunds. Order-level shipping refunds and goodwill adjustments are not attributed to products.
+- Base-currency amounts are converted to the default-scope base (global reporting) currency using each order's recorded `base_to_global_rate`. Orders already in that currency use a rate of one. Foreign-base orders with no valid conversion to that currency are excluded rather than adding incomparable monetary amounts; present-day exchange rates are not used.
+- Configurable and fixed-price bundle parents own their revenue; child rows are excluded. Dynamic-price bundle component revenue is assigned to the purchased bundle once. Standalone sales of a variant also contribute to its currently linked configurable parents.
 - Known test **order entity IDs**, rather than displayed order numbers, can be excluded in configuration. Exclusion changes take effect at the next full metrics refresh.
 - Ratings use Magento's store-specific approved-review aggregate. Unreviewed products have zero rating; configurable parents use their own displayed rating. There is no new-product boost.
 - Availability respects enabled status, website assignment, indexed salability and inherited/product stock settings. MSI reservations reduce immediately available quantity and compensation reservations restore it. Products without backorders become unavailable when their remaining quantity reaches the out-of-stock threshold. Backorders without immediate stock are demoted; a negative threshold permits limited backorders until that limit is reached. Unmanaged stock remains immediately available when indexed as salable. An explicit purchasable Amasty preorder designation also demotes positive-stock products.

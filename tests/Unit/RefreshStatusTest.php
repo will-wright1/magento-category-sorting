@@ -29,9 +29,19 @@ final class RefreshStatusTest extends TestCase
     public function testRecordsSuccessfulMetricsBuildTime(): void
     {
         $flags = $this->createMock(FlagManager::class);
-        $flags->expects(self::once())->method('saveFlag')->with('willwright_category_sorting_last_full_refresh', 200000);
+        $flags->expects(self::once())->method('saveFlag')->with('willwright_category_sorting_last_full_sales_value_refresh', 200000);
         $clock = $this->createStub(DateTime::class);
         $clock->method('gmtTimestamp')->willReturn(200000);
         (new RefreshStatus($flags, $clock))->markFresh();
+    }
+
+    public function testUnitMetricsTimestampCannotSuppressTheFirstSalesValueBuild(): void
+    {
+        $flags = $this->createMock(FlagManager::class);
+        $flags->expects(self::once())->method('getFlagData')
+            ->with('willwright_category_sorting_last_full_sales_value_refresh')->willReturn(null);
+        $clock = $this->createStub(DateTime::class);
+        $clock->method('gmtTimestamp')->willReturn(200000);
+        self::assertTrue((new RefreshStatus($flags, $clock))->isDue());
     }
 }

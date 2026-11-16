@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 — 2026-11-16
+
+- Rank Recommended by net paid product sales value over 180 days instead of unit volume, after stock availability and before ratings/price.
+- Use historical invoiced/paid POS amounts after discounts, cancellation caps and product refunds, excluding tax and delivery, with native discount tax compensation.
+- Normalize website base currencies using recorded order conversion rates into Magento's default base currency; exclude foreign-base orders without a valid conversion.
+- Attribute dynamic-price bundle revenue to the purchased bundle and avoid configurable/fixed-bundle double counting.
+- Add a separate monetary snapshot column/search field and request a full metrics refresh after upgrade. Preserve the legacy units column for non-destructive upgrades. Full search reindexing is required.
+
 ## 1.1.0 — 2026-11-16
 
 - Automatically support both legacy CatalogInventory and MSI, including default/custom stocks resolved for each website.

@@ -4,7 +4,8 @@
         <column xsi:type="int" name="product_id" unsigned="true" nullable="false" comment="Product ID"/>
         <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false" comment="Store ID"/>
         <column xsi:type="smallint" name="availability" unsigned="true" nullable="false" default="2" comment="0 In Stock 1 Preorder 2 Unavailable"/>
-        <column xsi:type="decimal" name="units_sold" precision="20" scale="4" unsigned="true" nullable="false" default="0" comment="Net Paid Units In Last 180 Days"/>
+        <column xsi:type="decimal" name="units_sold" precision="20" scale="4" unsigned="true" nullable="false" default="0" comment="Deprecated Unit Metric (No Longer Used)"/>
+        <column xsi:type="decimal" name="sales_value" precision="20" scale="4" unsigned="true" nullable="false" default="0" comment="Net Paid Product Sales Value In Global Currency In Last 180 Days"/>
         <column xsi:type="smallint" name="rating" unsigned="true" nullable="false" default="0" comment="Approved Product Rating Percentage"/>
         <column xsi:type="boolean" name="needs_reindex" nullable="false" default="true" comment="Pending Search Publication"/>
         <constraint xsi:type="primary" referenceId="PRIMARY"><column name="store_id"/><column name="product_id"/></constraint>

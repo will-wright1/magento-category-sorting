@@ -41,7 +41,7 @@ class InventoryCompatibility implements CommentInterface
     public function getCommentText($elementValue): string
     {
         return $this->isSupported()
-            ? (string)__('In-stock first, then net paid units over 180 days, approved product rating, and highest selling price. Other customer-selected sorts remain available.')
+            ? (string)__('In-stock first, then net paid product sales value over 180 days (after discounts and refunds, excluding tax and delivery), approved product rating, and highest selling price. Other customer-selected sorts remain available.')
             : (string)__(self::ERROR_MESSAGE);
     }
 }

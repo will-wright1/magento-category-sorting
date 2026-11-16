@@ -1,6 +1,6 @@
 {
     "name": "willwright/module-category-sorting",
-    "description": "Magento 2 category sorting by stock availability, paid sales, review rating and customer-specific price.",
+    "description": "Magento 2 category sorting by stock availability, net paid sales value, review rating and customer-specific price.",
     "type": "magento2-module",
     "license": "MIT",
     "keywords": [

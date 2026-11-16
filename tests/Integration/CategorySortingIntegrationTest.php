@@ -91,7 +91,7 @@ final class CategorySortingIntegrationTest extends TestCase
         $this->resetFixtures();
     }
 
-    public function testSalesCountsAllChannelsAndPaidPosWithoutInvoicesAndDeduplicatesVariants(): void
+    public function testSalesValueCountsAllChannelsAndPaidPosWithoutInvoicesAndDeduplicatesVariants(): void
     {
         $date = '2026-11-14 12:00:00';
         $orders = [
@@ -132,22 +132,97 @@ final class CategorySortingIntegrationTest extends TestCase
         $this->item(15, 13, 301, 10, 10, 0, 0, 14); // bundle components must not count twice
         $this->item(16, 14, 102, 5, 4, 2, 1); // 5 - 2 canceled - 1 refunded = 2
         $this->item(17, 15, 104, 2, 2, 0, 3); // clamp at zero
-        $this->item(18, 16, 103, 1, 0); // free completed/processing order
+        $this->item(18, 16, 103, 1, 0, unitPrice: 0); // free completed/processing order
         $this->insert('sales_order_item', ['item_id' => 19, 'order_id' => 17, 'product_id' => 105,
             'parent_item_id' => null, 'qty_ordered' => 2, 'qty_invoiced' => null,
-            'qty_canceled' => null, 'qty_refunded' => null]); // historical nullable quantity fields
+            'qty_canceled' => null, 'qty_refunded' => null, 'base_row_total' => 20]); // historical nullable quantity fields
         $config = $this->createStub(Config::class);
         $config->method('getExcludedOrderIds')->willReturn([9]);
+        $config->method('getSalesCurrency')->willReturn('GBP');
         $totals = (new SalesSource($this->resource, $config))->getTotals(new DateTimeImmutable('2026-11-15T12:00:00Z'));
-        self::assertSame(8.0, $totals[101]);
-        self::assertSame(5.0, $totals[200]);
-        self::assertSame(3.0, $totals[201]);
-        self::assertSame(2.0, $totals[300]);
+        self::assertSame(80.0, $totals[101]);
+        self::assertSame(50.0, $totals[200]);
+        self::assertSame(30.0, $totals[201]);
+        self::assertSame(20.0, $totals[300]);
         self::assertArrayNotHasKey(301, $totals);
-        self::assertSame(2.0, $totals[102]);
+        self::assertSame(20.0, $totals[102]);
         self::assertSame(0.0, $totals[104]);
-        self::assertSame(1.0, $totals[103]);
-        self::assertSame(2.0, $totals[105]);
+        self::assertSame(0.0, $totals[103]);
+        self::assertSame(20.0, $totals[105]);
+    }
+
+    public function testSalesValueUsesHistoricalNetMoneyAndCreditsRatherThanUnitsOrCurrentPrice(): void
+    {
+        $this->paidOrder(1);
+        $this->item(1, 1, 101, 3, 3, unitPrice: 100); // 300 from three units
+        $this->item(2, 1, 102, 10, 10, unitPrice: 20); // 200 from ten units
+        $this->item(3, 1, 103, 4, 2, unitPrice: 100);
+        $this->db->update(self::PREFIX . 'sales_order_item', [
+            'base_discount_amount' => 80, 'base_discount_invoiced' => 40,
+            'base_amount_refunded' => 100, 'base_discount_refunded' => 20, 'qty_refunded' => 1,
+        ], ['item_id = ?' => 3]); // 200 - 40 - (100 - 20) = 80
+        $this->item(4, 1, 104, 2, 0, 1, unitPrice: 100);
+        $this->db->update(self::PREFIX . 'sales_order_item', ['base_discount_amount' => 40], ['item_id = ?' => 4]);
+        // Paid POS without an invoice: half of the discounted order line survives cancellation = 80.
+        $this->item(5, 1, 105, 1, 1, unitPrice: 100);
+        $this->db->update(self::PREFIX . 'sales_order_item', ['base_amount_refunded' => 25], ['item_id = ?' => 5]);
+        // A monetary credit with zero returned units still reduces value.
+        $this->item(6, 1, 106, 2, 2, unitPrice: 100);
+        $this->db->update(self::PREFIX . 'sales_order_item', [
+            'base_discount_invoiced' => 24, 'base_discount_tax_compensation_invoiced' => 4,
+            'base_amount_refunded' => 100, 'base_discount_refunded' => 12,
+            'base_discount_tax_compensation_refunded' => 2,
+        ], ['item_id = ?' => 6]); // 180 ex-VAT revenue - 90 ex-VAT credit = 90
+        $this->item(7, 1, 107, 0.5, 0.5, unitPrice: 19.99);
+        $this->item(8, 1, 108, 1, 1, unitPrice: 10);
+        $this->db->update(self::PREFIX . 'sales_order_item', ['base_amount_refunded' => 50], ['item_id = ?' => 8]);
+        $this->item(9, 1, 109, 2, 0, unitPrice: 100);
+        $this->db->update(self::PREFIX . 'sales_order_item', [
+            'base_discount_amount' => 24, 'base_discount_tax_compensation_amount' => 4,
+        ], ['item_id = ?' => 9]); // POS uses the same tax-exclusive discount calculation.
+        self::assertSame([101 => 300.0, 102 => 200.0, 103 => 80.0, 104 => 80.0, 105 => 75.0,
+            106 => 90.0, 107 => 9.995, 108 => 0.0, 109 => 180.0], $this->salesTotals());
+    }
+
+    public function testSalesValueNormalizesHistoricalBaseCurrenciesAndRejectsUnknownConversions(): void
+    {
+        foreach (range(1, 5) as $orderId) {
+            $this->paidOrder($orderId);
+            $this->item($orderId, $orderId, 100 + $orderId, 1, 1, unitPrice: 100);
+        }
+        $this->db->update(self::PREFIX . 'sales_order', ['base_currency_code' => 'EUR', 'base_to_global_rate' => 0.8], ['entity_id = ?' => 1]);
+        $this->db->update(self::PREFIX . 'sales_order', ['base_currency_code' => 'USD', 'base_to_global_rate' => 0.5], ['entity_id = ?' => 2]);
+        $this->db->update(self::PREFIX . 'sales_order', ['base_to_global_rate' => null, 'global_currency_code' => 'USD'], ['entity_id = ?' => 3]);
+        $this->db->update(self::PREFIX . 'sales_order', ['base_currency_code' => 'EUR', 'base_to_global_rate' => null], ['entity_id = ?' => 4]);
+        $this->db->update(self::PREFIX . 'sales_order', ['base_currency_code' => 'USD', 'global_currency_code' => 'EUR'], ['entity_id = ?' => 5]);
+        self::assertSame([101 => 80.0, 102 => 50.0, 103 => 100.0], $this->salesTotals());
+    }
+
+    public function testDynamicBundleRevenueAndRefundsBelongToBundleWithoutDoubleCounting(): void
+    {
+        $this->paidOrder(1);
+        $this->item(1, 1, 300, 2, 0, unitPrice: 0);
+        $this->db->update(self::PREFIX . 'sales_order_item', ['product_type' => 'bundle'], ['item_id = ?' => 1]);
+        $this->item(2, 1, 301, 10, 10, parent: 1, unitPrice: 50);
+        $this->item(3, 1, 302, 2, 2, parent: 1, unitPrice: 25);
+        $this->db->update(self::PREFIX . 'sales_order_item', ['base_amount_refunded' => 50, 'base_discount_refunded' => 5], ['item_id = ?' => 2]);
+        $this->item(4, 1, 400, 2, 2, unitPrice: 100);
+        $this->db->update(self::PREFIX . 'sales_order_item', ['product_type' => 'bundle'], ['item_id = ?' => 4]);
+        $this->item(5, 1, 401, 10, 10, parent: 4, unitPrice: 100);
+        self::assertSame([300 => 505.0, 400 => 200.0], $this->salesTotals());
+    }
+
+    private function paidOrder(int $id): void
+    {
+        $this->insert('sales_order', ['entity_id' => $id, 'created_at' => '2026-11-14 12:00:00',
+            'state' => 'complete', 'base_grand_total' => 100, 'base_total_paid' => 100, 'store_id' => 3, 'customer_group_id' => 0]);
+    }
+
+    private function salesTotals(): array
+    {
+        $config = $this->createStub(Config::class);
+        $config->method('getSalesCurrency')->willReturn('GBP');
+        return (new SalesSource($this->resource, $config))->getTotals(new DateTimeImmutable('2026-11-15T12:00:00Z'));
     }
 
     public function testAvailabilityUsesStoreWebsiteStatusAndPurchasableVariants(): void
@@ -191,12 +266,12 @@ final class CategorySortingIntegrationTest extends TestCase
         $storage = new IndexStorage($this->resource);
         self::assertSame([101], $storage->getProductIds(1, 0, 500));
         self::assertSame([], $storage->getProductIds(1, 101, 500));
-        $row = ['product_id' => 101, 'store_id' => 3, 'availability' => 0, 'units_sold' => '12.5000', 'rating' => 90, 'needs_reindex' => 1];
+        $row = ['product_id' => 101, 'store_id' => 3, 'availability' => 0, 'sales_value' => '12.5000', 'rating' => 90, 'needs_reindex' => 1];
         $storage->saveChanged([$row]);
         $row['store_id'] = 4;
         $storage->saveChanged([$row]);
         self::assertSame([101], $storage->getPendingIds(250, [3, 4]));
-        self::assertSame('12.5000', $storage->getRows([101], 3)[101]['units_sold']);
+        self::assertSame('12.5000', $storage->getRows([101], 3)[101]['sales_value']);
         $storage->markPublished([101], [3, 4]);
         self::assertSame([], $storage->getPendingIds(250, [3, 4]));
         $row['availability'] = 1;
@@ -223,9 +298,9 @@ final class CategorySortingIntegrationTest extends TestCase
         $this->product(102, 'simple');
         $storage = new IndexStorage($this->resource);
         $storage->saveChanged([
-            ['product_id' => 101, 'store_id' => 3, 'availability' => 0, 'units_sold' => 2, 'rating' => 90, 'needs_reindex' => 1],
-            ['product_id' => 101, 'store_id' => 4, 'availability' => 1, 'units_sold' => 2, 'rating' => 90, 'needs_reindex' => 1],
-            ['product_id' => 102, 'store_id' => 4, 'availability' => 0, 'units_sold' => 0, 'rating' => 0, 'needs_reindex' => 1],
+            ['product_id' => 101, 'store_id' => 3, 'availability' => 0, 'sales_value' => 2, 'rating' => 90, 'needs_reindex' => 1],
+            ['product_id' => 101, 'store_id' => 4, 'availability' => 1, 'sales_value' => 2, 'rating' => 90, 'needs_reindex' => 1],
+            ['product_id' => 102, 'store_id' => 4, 'availability' => 0, 'sales_value' => 0, 'rating' => 0, 'needs_reindex' => 1],
         ]);
         self::assertSame([], $storage->getPendingIds(250, []));
         self::assertSame([101], $storage->getPendingIds(250, [3]));
@@ -312,7 +387,8 @@ final class CategorySortingIntegrationTest extends TestCase
         $index = 'category-sorting-regression';
         $this->http('DELETE', '/' . $index, null, [200, 404]);
         try {
-            $mapping = (new FieldMapping())->getFields() + ['category' => ['type' => 'keyword'], 'price_0_1' => ['type' => 'double']];
+            $mapping = (new FieldMapping())->getFields() + ['category' => ['type' => 'keyword'],
+                'willwright_units_sold' => ['type' => 'double'], 'price_0_1' => ['type' => 'double']];
             $this->http('PUT', '/' . $index, ['settings' => ['number_of_shards' => 1, 'number_of_replicas' => 0],
                 'mappings' => ['properties' => $mapping]]);
             $rows = [
@@ -324,7 +400,8 @@ final class CategorySortingIntegrationTest extends TestCase
             foreach ($rows as [$id, $availability, $sales, $rating, $price, $category]) {
                 $this->http('PUT', "/$index/_doc/$id", [Config::ID_FIELD => $id,
                     Config::AVAILABILITY_FIELD => $availability, Config::SALES_FIELD => $sales,
-                    Config::RATING_FIELD => $rating, 'price_0_1' => $price, 'category' => $category]);
+                    Config::RATING_FIELD => $rating, 'price_0_1' => $price, 'category' => $category,
+                    'willwright_units_sold' => 1000000 - $sales]); // Conflicting old unit scores must be ignored.
             }
             $this->http('POST', "/$index/_refresh");
             $sort = $this->recommendedSort();
@@ -444,8 +521,8 @@ final class CategorySortingIntegrationTest extends TestCase
             'amasty_preorder_product_index' => 'product_id INT, website_id INT, PRIMARY KEY(product_id, website_id)',
             'inventory_stock_7' => 'sku VARCHAR(64) PRIMARY KEY, quantity DECIMAL(12,4), is_salable INT',
             'inventory_reservation' => 'stock_id INT, sku VARCHAR(64), quantity DECIMAL(12,4)',
-            'sales_order' => 'entity_id INT PRIMARY KEY, created_at DATETIME, state VARCHAR(32), base_grand_total DECIMAL(20,4), base_total_paid DECIMAL(20,4) NULL, store_id INT, customer_group_id INT',
-            'sales_order_item' => 'item_id INT PRIMARY KEY, order_id INT, product_id INT, parent_item_id INT NULL, qty_ordered DECIMAL(12,4), qty_invoiced DECIMAL(12,4), qty_canceled DECIMAL(12,4), qty_refunded DECIMAL(12,4)',
+            'sales_order' => 'entity_id INT PRIMARY KEY, created_at DATETIME, state VARCHAR(32), base_grand_total DECIMAL(20,4), base_total_paid DECIMAL(20,4) NULL, store_id INT, customer_group_id INT, base_currency_code VARCHAR(3) DEFAULT \'GBP\', global_currency_code VARCHAR(3) DEFAULT \'GBP\', base_to_global_rate DECIMAL(20,4) DEFAULT 1',
+            'sales_order_item' => 'item_id INT PRIMARY KEY, order_id INT, product_id INT, product_type VARCHAR(32) DEFAULT \'simple\', parent_item_id INT NULL, qty_ordered DECIMAL(12,4), qty_invoiced DECIMAL(12,4), qty_canceled DECIMAL(12,4), qty_refunded DECIMAL(12,4), base_row_total DECIMAL(20,4) DEFAULT 0, base_row_invoiced DECIMAL(20,4) DEFAULT 0, base_discount_amount DECIMAL(20,4) DEFAULT 0, base_discount_invoiced DECIMAL(20,4) DEFAULT 0, base_amount_refunded DECIMAL(20,4) DEFAULT 0, base_discount_refunded DECIMAL(20,4) DEFAULT 0, base_discount_tax_compensation_amount DECIMAL(20,4) DEFAULT 0, base_discount_tax_compensation_invoiced DECIMAL(20,4) DEFAULT 0, base_discount_tax_compensation_refunded DECIMAL(20,4) DEFAULT 0',
             'review_entity' => 'entity_id INT PRIMARY KEY, entity_code VARCHAR(32)',
             'review_entity_summary' => 'entity_pk_value INT, entity_type INT, store_id INT, reviews_count INT, rating_summary INT',
         ];
@@ -502,10 +579,12 @@ final class CategorySortingIntegrationTest extends TestCase
             'use_config_manage_stock' => 0, 'backorders' => 0, 'use_config_backorders' => 0, 'min_qty' => 0, 'use_config_min_qty' => 0]);
     }
 
-    private function item(int $id, int $order, int $product, float $qty, float $invoiced, float $canceled = 0, float $refunded = 0, ?int $parent = null): void
+    private function item(int $id, int $order, int $product, float $qty, float $invoiced, float $canceled = 0, float $refunded = 0, ?int $parent = null, float $unitPrice = 10): void
     {
         $this->insert('sales_order_item', ['item_id' => $id, 'order_id' => $order, 'product_id' => $product,
-            'qty_ordered' => $qty, 'qty_invoiced' => $invoiced, 'qty_canceled' => $canceled, 'qty_refunded' => $refunded, 'parent_item_id' => $parent]);
+            'qty_ordered' => $qty, 'qty_invoiced' => $invoiced, 'qty_canceled' => $canceled, 'qty_refunded' => $refunded, 'parent_item_id' => $parent,
+            'base_row_total' => $qty * $unitPrice, 'base_row_invoiced' => $invoiced * $unitPrice,
+            'base_amount_refunded' => $refunded * $unitPrice]);
     }
 
     private function insert(string $table, array $row): void

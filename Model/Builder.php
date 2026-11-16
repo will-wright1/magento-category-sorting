@@ -40,13 +40,13 @@ class Builder
                     $row = [
                         'product_id' => $id, 'store_id' => $storeId,
                         'availability' => $availability[$id] ?? Availability::UNAVAILABLE,
-                        'units_sold' => number_format($fullMetrics ? ($sales[$id] ?? 0) : (float)($old[$id]['units_sold'] ?? 0), 4, '.', ''),
+                        'sales_value' => number_format($fullMetrics ? ($sales[$id] ?? 0) : (float)($old[$id]['sales_value'] ?? 0), 4, '.', ''),
                         'rating' => $fullMetrics ? ($ratings[$id] ?? 0) : (int)($old[$id]['rating'] ?? 0),
                         'needs_reindex' => 1,
                     ];
                     if (!isset($old[$id])
                         || (int)$old[$id]['availability'] !== $row['availability']
-                        || number_format((float)$old[$id]['units_sold'], 4, '.', '') !== $row['units_sold']
+                        || number_format((float)($old[$id]['sales_value'] ?? 0), 4, '.', '') !== $row['sales_value']
                         || (int)$old[$id]['rating'] !== $row['rating']
                     ) {
                         $changes[] = $row;

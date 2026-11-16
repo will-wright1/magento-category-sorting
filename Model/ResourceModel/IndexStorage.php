@@ -44,7 +44,7 @@ class IndexStorage
         if ($rows) {
             $this->resource->getConnection()->insertOnDuplicate(
                 $this->resource->getTableName(self::TABLE), $rows,
-                ['availability', 'units_sold', 'rating', 'needs_reindex']
+                ['availability', 'sales_value', 'rating', 'needs_reindex']
             );
         }
     }

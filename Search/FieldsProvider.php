@@ -34,7 +34,7 @@ class FieldsProvider implements AdditionalFieldsProviderInterface
         foreach ($productIds as $id) {
             $result[(int)$id] = [
                 Config::AVAILABILITY_FIELD => $availability[$id] ?? Availability::UNAVAILABLE,
-                Config::SALES_FIELD => (float)($rows[$id]['units_sold'] ?? 0),
+                Config::SALES_FIELD => (float)($rows[$id]['sales_value'] ?? 0),
                 Config::RATING_FIELD => $ratings[$id] ?? 0,
                 Config::ID_FIELD => (int)$id,
             ];

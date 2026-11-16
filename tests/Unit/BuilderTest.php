@@ -23,12 +23,12 @@ final class BuilderTest extends TestCase
         $availability->method('getRanks')->with([1, 2, 3], 3)->willReturn([1 => 0, 2 => 1, 3 => 2]);
         $ratings->method('getRatings')->with([1, 2, 3], 3)->willReturn([1 => 90]);
         $storage->method('getRows')->willReturn([
-            1 => ['availability' => '0', 'units_sold' => '2.0000', 'rating' => '90', 'needs_reindex' => 0],
-            2 => ['availability' => '1', 'units_sold' => '5.0000', 'rating' => '80', 'needs_reindex' => 1],
+            1 => ['availability' => '0', 'sales_value' => '2.0000', 'rating' => '90', 'needs_reindex' => 0],
+            2 => ['availability' => '1', 'sales_value' => '5.0000', 'rating' => '80', 'needs_reindex' => 1],
         ]);
         $storage->expects(self::once())->method('saveChanged')->with([
-            ['product_id' => 2, 'store_id' => 3, 'availability' => 1, 'units_sold' => '0.0000', 'rating' => 0, 'needs_reindex' => 1],
-            ['product_id' => 3, 'store_id' => 3, 'availability' => 2, 'units_sold' => '0.0000', 'rating' => 0, 'needs_reindex' => 1],
+            ['product_id' => 2, 'store_id' => 3, 'availability' => 1, 'sales_value' => '0.0000', 'rating' => 0, 'needs_reindex' => 1],
+            ['product_id' => 3, 'store_id' => 3, 'availability' => 2, 'sales_value' => '0.0000', 'rating' => 0, 'needs_reindex' => 1],
         ]);
         $builder->rebuild(true);
     }
@@ -40,12 +40,12 @@ final class BuilderTest extends TestCase
         $ratings->expects(self::never())->method('getRatings');
         $availability->expects(self::once())->method('getRanks')->with([1, 2, 3], 3)->willReturn([1 => 1, 2 => 0, 3 => 2]);
         $storage->method('getRows')->willReturn([
-            1 => ['availability' => 0, 'units_sold' => '4.5000', 'rating' => 88],
-            2 => ['availability' => 0, 'units_sold' => '3.0000', 'rating' => 90],
-            3 => ['availability' => 2, 'units_sold' => '0.0000', 'rating' => 0],
+            1 => ['availability' => 0, 'sales_value' => '4.5000', 'rating' => 88],
+            2 => ['availability' => 0, 'sales_value' => '3.0000', 'rating' => 90],
+            3 => ['availability' => 2, 'sales_value' => '0.0000', 'rating' => 0],
         ]);
         $storage->expects(self::once())->method('saveChanged')->with([
-            ['product_id' => 1, 'store_id' => 3, 'availability' => 1, 'units_sold' => '4.5000', 'rating' => 88, 'needs_reindex' => 1],
+            ['product_id' => 1, 'store_id' => 3, 'availability' => 1, 'sales_value' => '4.5000', 'rating' => 88, 'needs_reindex' => 1],
         ]);
         $builder->rebuild(false);
     }
@@ -53,7 +53,10 @@ final class BuilderTest extends TestCase
     public function testSearchFieldsUseCurrentStockAndRatingsAndNumericDefaultsForNewProducts(): void
     {
         $storage = $this->createStub(IndexStorage::class);
-        $storage->method('getRows')->willReturn([1 => ['units_sold' => '12.5000']]);
+        $storage->method('getRows')->willReturn([
+            1 => ['sales_value' => '12.5000', 'units_sold' => '999999.0000'],
+            2 => ['units_sold' => '999999.0000'], // An old snapshot must never be interpreted as money.
+        ]);
         $availability = $this->createStub(AvailabilityProviderInterface::class);
         $availability->method('getRanks')->willReturn([1 => 1]);
         $ratings = $this->createStub(RatingsSource::class);

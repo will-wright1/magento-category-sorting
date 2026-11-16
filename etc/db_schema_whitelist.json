@@ -1,6 +1,6 @@
 {
     "willwright_category_sorting": {
-        "column": {"product_id": true, "store_id": true, "availability": true, "units_sold": true, "rating": true, "needs_reindex": true},
+        "column": {"product_id": true, "store_id": true, "availability": true, "units_sold": true, "sales_value": true, "rating": true, "needs_reindex": true},
         "constraint": {"PRIMARY": true, "WILLWRIGHT_CATEGORY_SORTING_PRODUCT": true, "WILLWRIGHT_CATEGORY_SORTING_STORE": true},
         "index": {"WILLWRIGHT_CATEGORY_SORTING_PENDING": true}
     }

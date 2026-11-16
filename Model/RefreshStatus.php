@@ -8,7 +8,7 @@ use Magento\Framework\Stdlib\DateTime\DateTime;
 
 class RefreshStatus
 {
-    private const FLAG = 'willwright_category_sorting_last_full_refresh';
+    private const FLAG = 'willwright_category_sorting_last_full_sales_value_refresh';
 
     public function __construct(private FlagManager $flags, private DateTime $clock)
     {

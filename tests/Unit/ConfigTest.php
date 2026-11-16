@@ -26,4 +26,11 @@ final class ConfigTest extends TestCase
         )->willReturn(false);
         self::assertFalse((new Config($scope, $this->createStub(InventoryCompatibility::class)))->isEnabled(3));
     }
+
+    public function testSalesUseTheDefaultBaseCurrencyRatherThanStoreDisplayCurrency(): void
+    {
+        $scope = $this->createMock(ScopeConfigInterface::class);
+        $scope->expects(self::once())->method('getValue')->with('currency/options/base')->willReturn('gbp');
+        self::assertSame('GBP', (new Config($scope, $this->createStub(InventoryCompatibility::class)))->getSalesCurrency());
+    }
 }

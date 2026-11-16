@@ -12,7 +12,7 @@ class Config
     public const XML_PATH_ENABLED = 'willwright_category_sorting/general/enabled';
     public const SORT_CODE = 'willwright_recommended';
     public const AVAILABILITY_FIELD = 'willwright_availability';
-    public const SALES_FIELD = 'willwright_units_sold';
+    public const SALES_FIELD = 'willwright_sales_value';
     public const RATING_FIELD = 'willwright_product_rating';
     public const ID_FIELD = 'willwright_product_id';
 
@@ -39,5 +39,11 @@ class Config
     public function useAmastyPreorder(): bool
     {
         return $this->scopeConfig->isSetFlag('willwright_category_sorting/general/use_amasty_preorder');
+    }
+
+    public function getSalesCurrency(): string
+    {
+        // Default-scope base currency is Magento's global reporting currency.
+        return strtoupper(trim((string)$this->scopeConfig->getValue('currency/options/base')));
     }
 }
